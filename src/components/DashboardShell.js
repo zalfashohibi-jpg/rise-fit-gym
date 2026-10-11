@@ -4,77 +4,108 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import LogoutButton from '@/components/LogoutButton'
+import Ikon from '@/components/Ikon'
+import { ambilKamus, BAHASA_TERSEDIA } from '@/lib/i18n/kamus'
+import { ubahBahasa } from '@/lib/i18n/aksi'
 
-const icons = {
-  grid: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
-  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
-  badge: <><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0M3 11h3M18 11h3M4 8v6M20 8v6"/></>,
-  clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
-  wallet: <><path d="M20 7V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h16v11H5a3 3 0 0 1-3-3V6"/><path d="M16 13h2"/></>,
-  calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></>,
-  box: <><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="m3 8 9 5 9-5v8l-9 5-9-5Z"/><path d="M12 13v8"/></>,
-  receipt: <><path d="M6 2v20l3-2 3 2 3-2 3 2V2l-3 2-3-2-3 2Z"/><path d="M9 9h6M9 13h6"/></>,
-  check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></>,
-  megaphone: <><path d="m3 11 15-6v14L3 13Z"/><path d="m11.6 16.5.8 3a2 2 0 0 1-3.8 1L7 15"/></>,
-  close: <path d="m6 6 12 12M18 6 6 18"/>,
-}
+// href null = halamannya belum dibuat
+const menuUtama = { ikon: 'grid', kunci: 'dashboard', href: '/' }
 
-function Icon({ name, size = 17 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {icons[name]}
-    </svg>
-  )
-}
-
-// href: null = halamannya belum dibuat ("segera")
-const grup = [
+const kelompok = [
   {
-    label: 'UTAMA',
-    items: [
-      { icon: 'grid', label: 'Ringkasan', href: '/' },
-      { icon: 'users', label: 'Member', href: '/member',},
-      { icon: 'wallet', label: 'Paket membership', href: '/paket' },
+    kunci: 'membership',
+    ikon: 'users',
+    item: [
+      { kunci: 'listPackage', href: '/paket' },
+      { kunci: 'createPackage', href: null },
+      { kunci: 'memberList', href: '/member' },
     ],
   },
   {
-    label: 'TIM',
-    items: [
-      { icon: 'badge', label: 'Karyawan & trainer', href: '/karyawan' },
-      { icon: 'clock', label: 'Absensi', href: null },
-      { icon: 'wallet', label: 'Penggajian', href: null },
+    kunci: 'operasional',
+    ikon: 'calendar',
+    item: [
+      { kunci: 'classManagement', href: '/jadwal' },
+      { kunci: 'sesiLatihan', href: '/pt' },
+      { kunci: 'absensi', href: null },
     ],
   },
   {
-    label: 'OPERASIONAL',
-    items: [
-      { icon: 'calendar', label: 'Jadwal', href: '/jadwal' },
-      { icon: 'badge', label: 'Paket PT', href: '/pt' },
-      { icon: 'box', label: 'Stok & penjualan', href: '/stok' },
-      { icon: 'receipt', label: 'Invoice & transaksi', href: '/invoice' },
+    kunci: 'userManagement',
+    ikon: 'badge',
+    item: [
+      { kunci: 'staff', href: '/karyawan' },
+      { kunci: 'freelancer', href: null },
+      { kunci: 'penggajian', href: null },
     ],
   },
   {
-    label: 'SISTEM',
-    items: [
-      { icon: 'check', label: 'Peraturan & T&C', href: null },
-      { icon: 'megaphone', label: 'Pengumuman', href: null },
+    kunci: 'penjualan',
+    ikon: 'cart',
+    item: [
+      { kunci: 'stok', href: '/stok' },
+      { kunci: 'pos', href: '/stok/jual' },
+      { kunci: 'transaksi', href: '/invoice' },
+    ],
+  },
+  {
+    kunci: 'pengaturan',
+    ikon: 'sliders',
+    item: [
+      { kunci: 'pengumuman', href: null },
+      { kunci: 'tnc', href: '/peraturan' },
     ],
   },
 ]
 
 function cocok(pathname, href) {
-  return href === '/' ? pathname === '/' : pathname.startsWith(href)
+  if (href === '/') return pathname === '/'
+  return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export default function DashboardShell({ nama, role, children }) {
-  const pathname = usePathname()
-  const [buka, setBuka] = useState(false)
+// kalau beberapa menu cocok (misal /stok dan /stok/jual), pakai yang alamatnya paling spesifik
+function cariAktif(pathname) {
+  const kandidat = [{ grup: null, item: menuUtama }]
+  for (const grup of kelompok) {
+    for (const item of grup.item) kandidat.push({ grup, item })
+  }
 
-  const semuaItem = grup.flatMap((g) => g.items)
-  const halamanIni = semuaItem.find((i) => i.href && cocok(pathname, i.href))
-  const inisial = nama.split(' ').map((k) => k[0]).slice(0, 2).join('').toUpperCase()
+  let terbaik = null
+  for (const k of kandidat) {
+    if (!k.item.href || !cocok(pathname, k.item.href)) continue
+    if (!terbaik || k.item.href.length > terbaik.item.href.length) terbaik = k
+  }
+  return terbaik
+}
+
+const kelasLink = (menyala) =>
+  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${
+    menyala ? 'bg-lime-300 text-zinc-950' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+  }`
+
+export default function DashboardShell({ nama, role, bahasa, children }) {
+  const pathname = usePathname()
+  const [buka, setBuka] = useState(false) // menu geser di HP
+  const [pilihan, setPilihan] = useState({}) // kelompok yang dibuka atau ditutup manual
+
+  const teks = ambilKamus(bahasa)
+  const aktif = cariAktif(pathname)
+  const inisial = nama
+    .split(' ')
+    .filter(Boolean)
+    .map((kata) => kata[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  // tanpa pilihan manual, kelompok yang berisi halaman aktif otomatis terbuka
+  function kelompokTerbuka(grup) {
+    return pilihan[grup.kunci] ?? aktif?.grup?.kunci === grup.kunci
+  }
+
+  function gantiKelompok(grup) {
+    setPilihan((lama) => ({ ...lama, [grup.kunci]: !kelompokTerbuka(grup) }))
+  }
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-950 lg:flex">
@@ -89,57 +120,114 @@ export default function DashboardShell({ nama, role, children }) {
           <div className="flex items-center gap-3">
             <div className="grid size-10 place-items-center rounded-xl bg-lime-300 font-black text-zinc-950">R</div>
             <div>
-              <div className="text-lg font-extrabold tracking-tight">Rise Fit Gym</div>
-              <div className="text-[11px] font-bold tracking-[0.18em] text-zinc-500">MANAJEMEN</div>
+              <div className="text-lg font-extrabold tracking-tight">{teks.namaApp}</div>
+              <div className="text-[11px] font-bold tracking-[0.18em] text-zinc-500">{teks.subjudul}</div>
             </div>
           </div>
-          <button onClick={() => setBuka(false)} className="lg:hidden" aria-label="Tutup menu">
-            <Icon name="close" />
+          <button onClick={() => setBuka(false)} className="lg:hidden" aria-label={teks.ui.tutupMenu}>
+            <Ikon nama="close" />
           </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 py-5">
-          {grup.map((g) => (
-            <div key={g.label} className="mb-5">
-              <div className="mb-2 px-3 text-[11px] font-bold tracking-[0.16em] text-zinc-500">{g.label}</div>
-              {g.items.map((item) => {
-                if (!item.href) {
-                  return (
-                    <div key={item.label} className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-600">
-                      <Icon name={item.icon} />
-                      <span className="flex-1">{item.label}</span>
-                      <span className="text-[10px] font-bold">SEGERA</span>
-                    </div>
-                  )
-                }
-                const aktif = cocok(pathname, item.href)
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={() => setBuka(false)}
-                    className={`mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${
-                      aktif ? 'bg-lime-300 text-zinc-950' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
-                    }`}
-                  >
-                    <Icon name={item.icon} />
-                    <span className="flex-1">{item.label}</span>
-                  </Link>
-                )
-              })}
-            </div>
-          ))}
+          <Link
+            href={menuUtama.href}
+            onClick={() => setBuka(false)}
+            className={kelasLink(aktif?.item.kunci === 'dashboard')}
+          >
+            <Ikon nama={menuUtama.ikon} />
+            <span className="flex-1">{teks.menu.dashboard}</span>
+          </Link>
+
+          {kelompok.map((grup) => {
+            const terbuka = kelompokTerbuka(grup)
+            const berisiAktif = aktif?.grup?.kunci === grup.kunci
+            const idDaftar = `menu-${grup.kunci}`
+
+            return (
+              <div key={grup.kunci} className="mt-1">
+                <button
+                  type="button"
+                  onClick={() => gantiKelompok(grup)}
+                  aria-expanded={terbuka}
+                  aria-controls={idDaftar}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-white/5 hover:text-white ${
+                    berisiAktif ? 'text-white' : 'text-zinc-400'
+                  }`}
+                >
+                  <Ikon nama={grup.ikon} />
+                  <span className="flex-1 text-left">{teks.grup[grup.kunci]}</span>
+                  <span className={terbuka ? 'rotate-180' : ''}>
+                    <Ikon nama="chevron" ukuran={15} />
+                  </span>
+                </button>
+
+                {terbuka && (
+                  <div id={idDaftar} className="ml-[22px] mt-1 space-y-0.5 border-l border-white/10 pl-3">
+                    {grup.item.map((item) => {
+                      const label = teks.menu[item.kunci]
+
+                      if (!item.href) {
+                        return (
+                          <div
+                            key={item.kunci}
+                            className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-zinc-600"
+                          >
+                            <span>{label}</span>
+                            <span className="text-[10px] font-bold">{teks.ui.segera}</span>
+                          </div>
+                        )
+                      }
+
+                      const menyala = aktif?.item.kunci === item.kunci
+                      return (
+                        <Link
+                          key={item.kunci}
+                          href={item.href}
+                          onClick={() => setBuka(false)}
+                          className={`block rounded-lg px-3 py-2 text-sm font-medium ${
+                            menyala ? 'bg-lime-300 text-zinc-950' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </nav>
 
-        <div className="m-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <form action={ubahBahasa} className="mx-4 mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold text-zinc-500">{teks.ui.bahasa}</span>
+          <div className="flex rounded-lg border border-white/10 p-0.5">
+            {BAHASA_TERSEDIA.map((kode) => (
+              <button
+                key={kode}
+                type="submit"
+                name="bahasa"
+                value={kode}
+                className={`rounded-md px-3 py-1 text-xs font-bold ${
+                  bahasa === kode ? 'bg-white text-zinc-950' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {kode.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </form>
+
+        <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="mb-3 flex items-center gap-3">
-            <div className="grid size-9 place-items-center rounded-full bg-zinc-700 text-xs font-bold">{inisial}</div>
+            <div className="grid size-10 place-items-center rounded-full bg-zinc-700 text-xs font-bold">{inisial}</div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{nama}</div>
               <div className="text-xs text-zinc-500">{role}</div>
             </div>
           </div>
-          <LogoutButton />
+          <LogoutButton label={teks.ui.keluar} />
         </div>
       </aside>
 
@@ -148,11 +236,19 @@ export default function DashboardShell({ nama, role, children }) {
           <button
             onClick={() => setBuka(true)}
             className="grid size-10 place-items-center rounded-xl bg-zinc-950 text-xl text-white lg:hidden"
-            aria-label="Buka menu"
+            aria-label={teks.ui.bukaMenu}
           >
             ≡
           </button>
-          <div className="text-lg font-bold tracking-tight">{halamanIni?.label ?? 'Dashboard'}</div>
+          <div className="flex items-center gap-2 text-base font-bold tracking-tight sm:text-lg">
+            {aktif?.grup && (
+              <>
+                <span className="font-medium text-zinc-400">{teks.grup[aktif.grup.kunci]}</span>
+                <span className="text-zinc-300">/</span>
+              </>
+            )}
+            <span>{aktif ? teks.menu[aktif.item.kunci] : teks.menu.dashboard}</span>
+          </div>
         </header>
 
         {children}
