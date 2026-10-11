@@ -34,7 +34,8 @@ const grup = [
     label: 'UTAMA',
     items: [
       { icon: 'grid', label: 'Ringkasan', href: '/' },
-      { icon: 'users', label: 'Member', href: '/member' },
+      { icon: 'users', label: 'Member', href: '/member',},
+      { icon: 'wallet', label: 'Paket membership', href: '/paket' },
     ],
   },
   {
@@ -49,8 +50,9 @@ const grup = [
     label: 'OPERASIONAL',
     items: [
       { icon: 'calendar', label: 'Jadwal', href: '/jadwal' },
-      { icon: 'box', label: 'Stok & penjualan', href: null },
-      { icon: 'receipt', label: 'Invoice & transaksi', href: null },
+      { icon: 'badge', label: 'Paket PT', href: '/pt' },
+      { icon: 'box', label: 'Stok & penjualan', href: '/stok' },
+      { icon: 'receipt', label: 'Invoice & transaksi', href: '/invoice' },
     ],
   },
   {

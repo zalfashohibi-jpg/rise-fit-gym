@@ -1,0 +1,1 @@
+export const BATAS_STOK = 5
