@@ -1,126 +1,90 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-
-function tambahHari(tanggal, n) {
-  const d = new Date(tanggal)
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
-}
-
-async function perpanjang(formData) {
-  'use server'
-
-  const supabase = await createClient()
-
-  const member_id = Number(formData.get('member_id'))
-  const tanggal_mulai = formData.get('tanggal_mulai')
-  const paket_id = Number(formData.get('paket_id'))
-
-  const { data: paket, error: errPaket } = await supabase
-    .from('paket_membership')
-    .select('nama, durasi_hari')
-    .eq('id', paket_id)
-    .single()
-
-  if (errPaket) throw new Error('Paket tidak ditemukan.')
-
-  const tanggal_exp = tambahHari(tanggal_mulai, paket.durasi_hari)
-
-  // buat membership baru dulu, supaya kalau gagal yang lama tidak ikut hilang
-  const { data: baru, error } = await supabase
-    .from('membership')
-    .insert({ member_id, paket: paket.nama, tanggal_mulai, tanggal_exp, status: 'aktif' })
-    .select('id')
-    .single()
-
-  if (error) throw new Error(error.message)
-
-  // tandai yang lama sebagai selesai (riwayat tetap tersimpan)
-  const { error: errLama } = await supabase
-    .from('membership')
-    .update({ status: 'selesai' })
-    .eq('member_id', member_id)
-    .neq('id', baru.id)
-
-  if (errLama) throw new Error(errLama.message)
-
-  redirect('/member')
-}
+import { bahasaAktif } from '@/lib/i18n/bahasa'
+import { ambilTeksMember } from '@/lib/i18n/member'
+import { METODE_BAYAR } from '@/lib/pembayaran'
+import { formatDurasi } from '@/lib/paket'
+import { hariIniJakarta } from '@/lib/tanggal'
+import FormAksi from '@/components/FormAksi'
+import { Kolom, gayaInput, gayaTombolLain } from '@/components/FormKit'
+import { perpanjangMember } from '../../aksi'
 
 export default async function PerpanjangPage({ params }) {
   const { id } = await params
+  const bahasa = await bahasaAktif()
+  const t = ambilTeksMember(bahasa)
   const supabase = await createClient()
 
-  const { data: member } = await supabase
-    .from('member')
-    .select('id, nama, membership(tanggal_exp)')
-    .eq('id', id)
-    .order('tanggal_exp', { referencedTable: 'membership', ascending: false })
-    .single()
+  const [{ data: member }, { data: paket }] = await Promise.all([
+    supabase
+      .from('member')
+      .select('id, nama, membership(tanggal_exp)')
+      .eq('id', id)
+      .order('tanggal_exp', { referencedTable: 'membership', ascending: false })
+      .single(),
+    supabase
+      .from('paket_membership')
+      .select('id, nama, harga, durasi_hari')
+      .eq('jenis', 'membership')
+      .eq('aktif', true)
+      .order('durasi_hari'),
+  ])
 
   if (!member) {
-    return <p className="p-10">Member tidak ditemukan.</p>
+    return <p className="p-10">{t.detail.tidakAda}</p>
   }
-
-  const { data: paket } = await supabase
-    .from('paket_membership')
-    .select('id, nama, harga')
-    .eq('aktif', true)
-    .order('durasi_hari')
-
-  const input = 'w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm outline-none focus:border-zinc-950'
 
   if (!paket?.length) {
     return (
-      <main className="p-5 sm:p-8 max-w-lg">
-        <h1 className="text-2xl font-black tracking-tight mb-4">Perpanjang membership</h1>
-        <p className="text-zinc-600 mb-4">Belum ada paket membership yang aktif.</p>
-        <Link href="/paket" className="border border-zinc-200 bg-white rounded-xl font-semibold hover:bg-zinc-50 px-4 py-2 text-sm">
-          Kelola paket
-        </Link>
+      <main className="max-w-lg p-5 sm:p-8">
+        <h1 className="mb-4 text-2xl font-black tracking-tight">{t.perpanjang.judul}</h1>
+        <p className="mb-4 text-zinc-600">{t.perpanjang.kosongPaket}</p>
+        <Link href="/paket" className={gayaTombolLain}>{t.perpanjang.kelolaPaket}</Link>
       </main>
     )
   }
 
-  // kalau masih aktif, mulai dari tanggal exp lama; kalau sudah lewat, mulai hari ini
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+  // kalau masih berlaku, mulai dari tanggal expired lama supaya sisa hari tidak hangus
+  const hariIni = hariIniJakarta()
   const expTerakhir = member.membership?.[0]?.tanggal_exp
-  const defaultMulai = expTerakhir && expTerakhir > today ? expTerakhir : today
+  const defaultMulai = expTerakhir && expTerakhir > hariIni ? expTerakhir : hariIni
 
   return (
-    <main className="p-5 sm:p-8 max-w-lg">
-      <h1 className="text-2xl font-black tracking-tight mb-1">Perpanjang membership</h1>
-      <p className="text-zinc-500 mb-6">{member.nama}</p>
+    <main className="max-w-lg p-5 sm:p-8">
+      <h1 className="mb-1 text-2xl font-black tracking-tight">{t.perpanjang.judul}</h1>
+      <p className="mb-6 text-zinc-500">{member.nama}</p>
 
-      <form action={perpanjang} className="space-y-4">
+      <FormAksi
+        aksi={perpanjangMember}
+        kirim={t.perpanjang.simpan}
+        menyimpan={t.perpanjang.menyimpan}
+        batal={t.perpanjang.batal}
+        batalHref={`/member/${member.id}`}
+      >
         <input type="hidden" name="member_id" value={member.id} />
 
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">Paket</label>
-          <select name="paket_id" className={input}>
+        <Kolom label={t.perpanjang.paket} untuk="paket_id">
+          <select id="paket_id" name="paket_id" className={gayaInput}>
             {paket.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nama} · Rp {p.harga.toLocaleString('id-ID')}
+                {p.nama} · {formatDurasi(p.durasi_hari, bahasa)} · Rp {p.harga.toLocaleString('id-ID')}
               </option>
             ))}
           </select>
-        </div>
+        </Kolom>
 
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">Tanggal mulai</label>
-          <input name="tanggal_mulai" type="date" required defaultValue={defaultMulai} className={input} />
-        </div>
+        <Kolom label={t.perpanjang.mulai} untuk="tanggal_mulai">
+          <input id="tanggal_mulai" name="tanggal_mulai" type="date" required defaultValue={defaultMulai} className={gayaInput} />
+        </Kolom>
 
-        <div className="flex gap-3 pt-2">
-          <button type="submit" className="bg-lime-300 text-zinc-950 rounded-xl px-5 py-2.5 text-sm font-bold">
-            Perpanjang
-          </button>
-          <Link href="/member" className="border border-zinc-200 bg-white rounded-xl font-semibold hover:bg-zinc-50 px-4 py-2 text-sm">
-            Batal
-          </Link>
-        </div>
-      </form>
+        <Kolom label={t.perpanjang.metode} untuk="metode" bantuan={t.perpanjang.metodeBantuan}>
+          <select id="metode" name="metode" className={gayaInput}>
+            {METODE_BAYAR.map((m) => (
+              <option key={m} value={m}>{t.metode[m] ?? m}</option>
+            ))}
+          </select>
+        </Kolom>
+      </FormAksi>
     </main>
   )
 }

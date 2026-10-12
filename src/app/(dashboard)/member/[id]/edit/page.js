@@ -1,103 +1,90 @@
-import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-
-async function simpanPerubahan(formData) {
-  'use server'
-
-  const supabase = await createClient()
-  const id = Number(formData.get('id'))
-  const nama = formData.get('nama')
-  const no_hp = formData.get('no_hp')
-
-  const { error } = await supabase
-    .from('member')
-    .update({ nama, no_hp })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
-
-  redirect('/member')
-}
-
-async function hapusMember(formData) {
-  'use server'
-
-  const supabase = await createClient()
-  const id = Number(formData.get('id'))
-
-  const { error } = await supabase.from('member').delete().eq('id', id)
-
-  if (error) throw new Error(error.message)
-
-  redirect('/member')
-}
+import { bahasaAktif } from '@/lib/i18n/bahasa'
+import { ambilTeksMember } from '@/lib/i18n/member'
+import { isi } from '@/lib/i18n/umum'
+import { formatDurasi } from '@/lib/paket'
+import { hariIniJakarta } from '@/lib/tanggal'
+import FormAksi from '@/components/FormAksi'
+import { Kolom, gayaInput } from '@/components/FormKit'
+import { ubahMember } from '../../aksi'
 
 export default async function EditMemberPage({ params }) {
   const { id } = await params
+  const bahasa = await bahasaAktif()
+  const t = ambilTeksMember(bahasa)
   const supabase = await createClient()
 
-  const { data: member } = await supabase
-    .from('member')
-    .select('id, nama, no_hp')
-    .eq('id', id)
-    .single()
+  const [{ data: member }, { data: paket }] = await Promise.all([
+    supabase
+      .from('member')
+      .select('id, nama, no_hp, alamat, tanggal_lahir, membership(id, paket, tanggal_mulai)')
+      .eq('id', id)
+      .order('tanggal_mulai', { referencedTable: 'membership', ascending: false })
+      .order('id', { referencedTable: 'membership', ascending: false })
+      .single(),
+    supabase
+      .from('paket_membership')
+      .select('id, nama, harga, durasi_hari')
+      .eq('jenis', 'membership')
+      .eq('aktif', true)
+      .order('durasi_hari'),
+  ])
 
   if (!member) {
-    return <p className="p-10">Member tidak ditemukan.</p>
+    return <p className="p-10">{t.detail.tidakAda}</p>
   }
 
+  const terkini = member.membership?.[0]
+
   return (
-    <main className="p-10 font-sans max-w-lg">
-      <h1 className="text-2xl font-semibold mb-6">Edit member</h1>
+    <main className="max-w-lg p-5 sm:p-8">
+      <h1 className="mb-6 text-2xl font-black tracking-tight">{t.edit.judul}</h1>
 
-      <form action={simpanPerubahan} className="space-y-4">
+      <FormAksi
+        aksi={ubahMember}
+        kirim={t.edit.simpan}
+        menyimpan={t.form.menyimpan}
+        batal={t.form.batal}
+        batalHref={`/member/${member.id}`}
+      >
         <input type="hidden" name="id" value={member.id} />
 
-        <div className="space-y-1">
-          <label className="text-sm text-stone-500">Nama lengkap</label>
+        <Kolom label={t.form.nama} untuk="nama">
+          <input id="nama" name="nama" required maxLength={100} defaultValue={member.nama} className={gayaInput} />
+        </Kolom>
+
+        <Kolom label={t.form.hp} untuk="no_hp">
+          <input id="no_hp" name="no_hp" type="tel" required maxLength={16} defaultValue={member.no_hp ?? ''} className={gayaInput} />
+        </Kolom>
+
+        <Kolom label={t.form.alamat} untuk="alamat">
+          <textarea id="alamat" name="alamat" rows={3} maxLength={300} defaultValue={member.alamat ?? ''} className={gayaInput} />
+        </Kolom>
+
+        <Kolom label={t.form.lahir} untuk="tanggal_lahir">
           <input
-            name="nama"
-            required
-            defaultValue={member.nama}
-            className="w-full border border-stone-300 rounded-md px-3 py-2 text-sm"
+            id="tanggal_lahir"
+            name="tanggal_lahir"
+            type="date"
+            max={hariIniJakarta()}
+            defaultValue={member.tanggal_lahir ?? ''}
+            className={gayaInput}
           />
-        </div>
+        </Kolom>
 
-        <div className="space-y-1">
-          <label className="text-sm text-stone-500">No. HP</label>
-          <input
-            name="no_hp"
-            defaultValue={member.no_hp ?? ''}
-            className="w-full border border-stone-300 rounded-md px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <button type="submit" className="bg-teal-700 text-white rounded-md px-4 py-2 text-sm font-medium">
-            Simpan perubahan
-          </button>
-          <Link href="/member" className="border border-stone-300 rounded-md px-4 py-2 text-sm">
-            Batal
-          </Link>
-        </div>
-      </form>
-
-      <form action={hapusMember} className="mt-12 pt-6 border-t border-stone-200 space-y-3">
-        <input type="hidden" name="id" value={member.id} />
-        <p className="text-sm font-medium text-red-700">Hapus member</p>
-        <p className="text-sm text-stone-500">
-          Semua riwayat membership, invoice, dan sesi PT milik member ini ikut terhapus
-          dan tidak bisa dikembalikan.
-        </p>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" required />
-          Saya yakin ingin menghapus {member.nama}
-        </label>
-        <button type="submit" className="border border-red-300 text-red-700 rounded-md px-4 py-2 text-sm">
-          Hapus permanen
-        </button>
-      </form>
+        <Kolom label={t.edit.paket} untuk="paket_id" bantuan={terkini ? t.edit.paketBantuan : null}>
+          <select id="paket_id" name="paket_id" defaultValue="" disabled={!terkini} className={gayaInput}>
+            <option value="">
+              {terkini ? isi(t.edit.paketSaatIni, { nama: terkini.paket }) : t.edit.tanpaMembership}
+            </option>
+            {(paket ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nama} · {formatDurasi(p.durasi_hari, bahasa)} · Rp {p.harga.toLocaleString('id-ID')}
+              </option>
+            ))}
+          </select>
+        </Kolom>
+      </FormAksi>
     </main>
   )
 }

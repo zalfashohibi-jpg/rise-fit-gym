@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LogoutButton() {
+export default function LogoutButton({ label = 'Keluar' }) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -18,7 +18,7 @@ export default function LogoutButton() {
       onClick={handleLogout}
       className="w-full rounded-lg border border-white/10 px-3 py-2 text-left text-xs font-semibold text-zinc-400 hover:bg-white/5 hover:text-white"
     >
-      Keluar
+      {label}
     </button>
   )
 }

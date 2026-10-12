@@ -1,126 +1,106 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { bahasaAktif } from '@/lib/i18n/bahasa'
+import { ambilTeksMember } from '@/lib/i18n/member'
+import { METODE_BAYAR } from '@/lib/pembayaran'
+import { formatDurasi } from '@/lib/paket'
+import { hariIniJakarta } from '@/lib/tanggal'
+import FormAksi from '@/components/FormAksi'
+import { Kolom, gayaInput, gayaTombolLain } from '@/components/FormKit'
+import { tambahMember } from '../aksi'
 
-function tambahHari(tanggal, n) {
-  const d = new Date(tanggal)
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
-}
-
-async function tambahMember(formData) {
-  'use server'
-
+export default async function TambahMemberPage() {
+  const bahasa = await bahasaAktif()
+  const t = ambilTeksMember(bahasa)
   const supabase = await createClient()
 
-  const nama = formData.get('nama')
-  const no_hp = formData.get('no_hp')
-  const tanggal_mulai = formData.get('tanggal_mulai')
-  const paket_id = Number(formData.get('paket_id'))
+  const [{ data: paket }, { data: peraturanList }] = await Promise.all([
+    supabase
+      .from('paket_membership')
+      .select('id, nama, harga, durasi_hari')
+      .eq('jenis', 'membership')
+      .eq('aktif', true)
+      .order('durasi_hari'),
+    supabase.from('peraturan').select('judul, isi, versi').order('id', { ascending: false }).limit(1),
+  ])
 
-  const { data: paket, error: errPaket } = await supabase
-    .from('paket_membership')
-    .select('nama, durasi_hari')
-    .eq('id', paket_id)
-    .single()
+  const peraturan = peraturanList?.[0]
 
-  if (errPaket) throw new Error('Paket tidak ditemukan.')
-
-  const tanggal_exp = tambahHari(tanggal_mulai, paket.durasi_hari)
-
-  const { data: member, error: errMember } = await supabase
-    .from('member')
-    .insert({ nama, no_hp })
-    .select('id')
-    .single()
-
-  if (errMember) throw new Error(errMember.message)
-
-  const { error: errMembership } = await supabase.from('membership').insert({
-    member_id: member.id,
-    paket: paket.nama,
-    tanggal_mulai,
-    tanggal_exp,
-    status: 'aktif',
-  })
-
-  const { error: errBayar } = await catatPembayaran(supabase, {
-  member_id: member.id,   // di perpanjang: member_id
-  total: paket.harga,
-  metode,
-  keterangan: paket.nama,
-  })
-
-  if (errMembership) {
-    await supabase.from('member').delete().eq('id', member.id)
-    throw new Error(errMembership.message)
-  }
-
-  redirect('/member')
-}
-
-export default async function MemberBaruPage() {
-  const supabase = await createClient()
-  const { data: paket } = await supabase
-    .from('paket_membership')
-    .select('id, nama, harga')
-    .eq('aktif', true)
-    .order('durasi_hari')
-
-  const input = 'w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm outline-none focus:border-zinc-950'
-
-  if (!paket?.length) {
+  if (!paket?.length || !peraturan) {
     return (
-      <main className="p-5 sm:p-8 max-w-lg">
-        <h1 className="text-2xl font-black tracking-tight mb-4">Member baru</h1>
-        <p className="text-zinc-600 mb-4">Belum ada paket membership yang aktif.</p>
-        <Link href="/paket" className="border border-zinc-200 bg-white rounded-xl font-semibold hover:bg-zinc-50 px-4 py-2 text-sm">
-          Kelola paket
-        </Link>
+      <main className="max-w-lg p-5 sm:p-8">
+        <h1 className="mb-4 text-2xl font-black tracking-tight">{t.form.judul}</h1>
+        <p className="mb-4 text-zinc-600">{t.form.prasyarat}</p>
+        <div className="flex gap-3">
+          <Link href="/paket" className={gayaTombolLain}>{t.form.kelolaPaket}</Link>
+          <Link href="/peraturan" className={gayaTombolLain}>{t.form.kelolaPeraturan}</Link>
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="p-5 sm:p-8 max-w-lg">
-      <h1 className="text-2xl font-black tracking-tight mb-6">Member baru</h1>
+    <main className="max-w-lg p-5 sm:p-8">
+      <h1 className="mb-6 text-2xl font-black tracking-tight">{t.form.judul}</h1>
 
-      <form action={tambahMember} className="space-y-4">
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">Nama lengkap</label>
-          <input name="nama" required className={input} />
-        </div>
+      <FormAksi
+        aksi={tambahMember}
+        kirim={t.form.simpan}
+        menyimpan={t.form.menyimpan}
+        batal={t.form.batal}
+        batalHref="/member"
+      >
+        <Kolom label={t.form.nama} untuk="nama">
+          <input id="nama" name="nama" required maxLength={100} className={gayaInput} />
+        </Kolom>
 
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">No. HP</label>
-          <input name="no_hp" className={input} />
-        </div>
+        <Kolom label={t.form.hp} untuk="no_hp">
+          <input id="no_hp" name="no_hp" type="tel" required maxLength={16} className={gayaInput} />
+        </Kolom>
 
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">Paket</label>
-          <select name="paket_id" className={input}>
+        <Kolom label={t.form.alamat} untuk="alamat">
+          <textarea id="alamat" name="alamat" rows={3} maxLength={300} className={gayaInput} />
+        </Kolom>
+
+        <Kolom label={t.form.lahir} untuk="tanggal_lahir">
+          <input id="tanggal_lahir" name="tanggal_lahir" type="date" max={hariIniJakarta()} className={gayaInput} />
+        </Kolom>
+
+        <Kolom label={t.form.paket} untuk="paket_id">
+          <select id="paket_id" name="paket_id" className={gayaInput}>
             {paket.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nama} · Rp {p.harga.toLocaleString('id-ID')}
+                {p.nama} · {formatDurasi(p.durasi_hari, bahasa)} · Rp {p.harga.toLocaleString('id-ID')}
               </option>
             ))}
           </select>
-        </div>
+        </Kolom>
 
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-500">Tanggal mulai</label>
-          <input name="tanggal_mulai" type="date" required className={input} />
-        </div>
+        <Kolom label={t.form.aktivasi} untuk="tanggal_mulai">
+          <input id="tanggal_mulai" name="tanggal_mulai" type="date" required defaultValue={hariIniJakarta()} className={gayaInput} />
+        </Kolom>
 
-        <div className="flex gap-3 pt-2">
-          <button type="submit" className="bg-lime-300 text-zinc-950 rounded-xl px-5 py-2.5 text-sm font-bold">
-            Simpan
-          </button>
-          <Link href="/member" className="border border-zinc-200 bg-white rounded-xl font-semibold hover:bg-zinc-50 px-4 py-2 text-sm">
-            Batal
-          </Link>
+        <Kolom label={t.form.metode} untuk="metode" bantuan={t.form.metodeBantuan}>
+          <select id="metode" name="metode" className={gayaInput}>
+            {METODE_BAYAR.map((m) => (
+              <option key={m} value={m}>{t.metode[m] ?? m}</option>
+            ))}
+          </select>
+        </Kolom>
+
+        <div className="space-y-2 pt-2">
+          <div className="text-sm font-semibold">
+            {peraturan.judul} <span className="font-normal text-zinc-400">({peraturan.versi})</span>
+          </div>
+          <div className="max-h-40 overflow-y-auto whitespace-pre-line rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+            {peraturan.isi}
+          </div>
+          <label className="flex items-start gap-3 rounded-xl bg-zinc-100 p-4 text-sm text-zinc-700">
+            <input type="checkbox" name="setuju" required className="mt-0.5 accent-zinc-950" />
+            <span>{t.form.setuju}</span>
+          </label>
         </div>
-      </form>
+      </FormAksi>
     </main>
   )
 }

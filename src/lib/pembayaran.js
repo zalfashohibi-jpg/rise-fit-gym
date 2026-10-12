@@ -1,8 +1,8 @@
-export const METODE_BAYAR = ['Tunai', 'Transfer bank', 'QRIS', 'E-wallet']
+import { hariIniJakarta } from './tanggal'
 
-export function hariIniJakarta() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
-}
+export { hariIniJakarta }
+
+export const METODE_BAYAR = ['Tunai', 'Transfer bank', 'QRIS', 'E-wallet']
 
 // membuat invoice lunas + satu transaksi pembayaran
 export async function catatPembayaran(
