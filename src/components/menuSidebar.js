@@ -24,7 +24,7 @@ export const seksiMenu = [
       { kunci: 'jadwalPt', ikon: 'clock', href: null, akses: SEMUA_ADMIN },
       { kunci: 'paketPt', ikon: 'dumbbell', href: '/pt', akses: SEMUA_ADMIN },
       { kunci: 'dataInstruktur', ikon: 'badge', href: null, akses: SEMUA_ADMIN },
-      { kunci: 'inputInvoice', ikon: 'filePlus', href: null, akses: SEMUA_ADMIN },
+      { kunci: 'inputInvoice', ikon: 'filePlus', href: '/invoice/baru', akses: SEMUA_ADMIN },
       { kunci: 'checkIn', ikon: 'scan', href: null, akses: SEMUA_ADMIN },
       { kunci: 'laporanKeanggotaan', ikon: 'chart', href: null, akses: SEMUA_ADMIN },
     ],

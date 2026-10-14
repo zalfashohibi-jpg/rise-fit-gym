@@ -94,7 +94,7 @@ const teks = {
       },
       tidakAda: 'Member tidak ditemukan.',
     },
-    jenisInvoice: { membership: 'Membership', pt: 'Sesi PT', visit: 'Visit Gym', item: 'Item' },
+    jenisInvoice: { membership: 'Membership', pt: 'Sesi PT', visit: 'Visit Gym', item: 'Item', manual: 'Manua'},
     metode: { Tunai: 'Tunai', 'Transfer bank': 'Transfer bank', QRIS: 'QRIS', 'E-wallet': 'E-wallet' },
     galat: {
       nama: 'Nama lengkap wajib diisi (2 sampai 100 karakter).',
@@ -206,7 +206,7 @@ const teks = {
       },
       tidakAda: 'Member not found.',
     },
-    jenisInvoice: { membership: 'Membership', pt: 'PT Session', visit: 'Gym Visit', item: 'Item' },
+    jenisInvoice: { membership: 'Membership', pt: 'PT Session', visit: 'Gym Visit', item: 'Item', manual: 'Manual' },
     metode: { Tunai: 'Cash', 'Transfer bank': 'Bank transfer', QRIS: 'QRIS', 'E-wallet': 'E-wallet' },
     galat: {
       nama: 'Full name is required (2 to 100 characters).',
