@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 
-export default function InputRupiah({ name, id, className = '', required = false }) {
-  const [digit, setDigit] = useState('')
+export default function InputRupiah({ name, id, className = '', required = false, defaultValue = '' }) {
+  const [digit, setDigit] = useState(String(defaultValue ?? '').replace(/\D/g, ''))
   const tampil = digit ? Number(digit).toLocaleString('id-ID') : ''
 
   return (

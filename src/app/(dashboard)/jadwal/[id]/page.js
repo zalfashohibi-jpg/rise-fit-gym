@@ -1,184 +1,149 @@
 import Link from 'next/link'
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { bahasaAktif } from '@/lib/i18n/bahasa'
+import { ambilTeksKelas } from '@/lib/i18n/kelas'
+import { formatTanggal } from '@/lib/tanggal'
+import {
+  WARNA_STATUS_KELAS,
+  formatMenit,
+  jamSelesai,
+  statusKelas,
+  waktuSekarangJakarta,
+} from '@/lib/kelas'
+import { gayaTombolKecil, gayaTombolLain } from '@/components/FormKit'
+import { tandaiHadir, batalkanPeserta } from '../aksi'
+import FormDaftarPeserta from './FormDaftarPeserta'
 
-async function daftarkan(formData) {
-  'use server'
-
-  const supabase = await createClient()
-  const schedule_id = Number(formData.get('schedule_id'))
-  const member_id = Number(formData.get('member_id'))
-
-  // cek kapasitas
-  const { data: jadwal } = await supabase
-    .from('schedule')
-    .select('kelas(kapasitas)')
-    .eq('id', schedule_id)
-    .single()
-
-  const { count } = await supabase
-    .from('kelas_peserta')
-    .select('*', { count: 'exact', head: true })
-    .eq('schedule_id', schedule_id)
-
-  if (count >= (jadwal?.kelas?.kapasitas ?? 0)) {
-    throw new Error('Kelas sudah penuh.')
-  }
-
-  // cek apakah sudah terdaftar
-  const { data: sudah } = await supabase
-    .from('kelas_peserta')
-    .select('id')
-    .eq('schedule_id', schedule_id)
-    .eq('member_id', member_id)
-    .maybeSingle()
-
-  if (sudah) throw new Error('Member ini sudah terdaftar di kelas ini.')
-
-  const { error } = await supabase
-    .from('kelas_peserta')
-    .insert({ schedule_id, member_id, status_hadir: 'terdaftar' })
-
-  if (error) throw new Error(error.message)
-
-  revalidatePath(`/jadwal/${schedule_id}`)
+function Baris({ label, children }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-zinc-500">{label}</dt>
+      <dd className="mt-1 text-sm font-medium">{children}</dd>
+    </div>
+  )
 }
 
-async function tandaiHadir(formData) {
-  'use server'
-
-  const supabase = await createClient()
-  const id = Number(formData.get('id'))
-  const schedule_id = Number(formData.get('schedule_id'))
-
-  const { error } = await supabase
-    .from('kelas_peserta')
-    .update({ status_hadir: 'hadir' })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
-
-  revalidatePath(`/jadwal/${schedule_id}`)
-}
-
-async function batalkan(formData) {
-  'use server'
-
-  const supabase = await createClient()
-  const id = Number(formData.get('id'))
-  const schedule_id = Number(formData.get('schedule_id'))
-
-  const { error } = await supabase.from('kelas_peserta').delete().eq('id', id)
-  if (error) throw new Error(error.message)
-
-  revalidatePath(`/jadwal/${schedule_id}`)
-}
-
-export default async function DetailJadwalPage({ params }) {
+export default async function DetailKelasPage({ params }) {
   const { id } = await params
+  const bahasa = await bahasaAktif()
+  const t = ambilTeksKelas(bahasa)
+  const d = t.detail
   const supabase = await createClient()
 
-  const { data: jadwal } = await supabase
-    .from('schedule')
-    .select('*, kelas(nama_kelas, kapasitas), personal_trainer(karyawan(nama))')
-    .eq('id', id)
-    .single()
+  const [{ data: kelas }, { data: peserta }] = await Promise.all([
+    supabase
+      .from('schedule')
+      .select(
+        'id, nama_kelas, tipe_kelas, tanggal, jam_mulai, durasi_menit, kapasitas, dibatalkan, instruktur:karyawan!instruktur_id(nama, tipe)'
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    supabase
+      .from('kelas_peserta')
+      .select('id, member_id, status_hadir, member(nama, no_hp)')
+      .eq('schedule_id', id)
+      .order('id'),
+  ])
 
-  if (!jadwal) {
-    return <p className="p-10">Jadwal tidak ditemukan.</p>
+  if (!kelas) {
+    return <p className="p-10">{d.tidakAda}</p>
   }
 
-  const { data: peserta } = await supabase
-    .from('kelas_peserta')
-    .select('id, status_hadir, member(nama, no_hp)')
-    .eq('schedule_id', id)
-    .order('id')
-
-  // hanya member dengan membership aktif yang masih berlaku pada tanggal kelas
+  // member aktif dengan membership yang berlaku pada tanggal kelas (pemeriksaan akhir ada di database)
   const { data: layak } = await supabase
     .from('member')
-    .select('id, nama, membership!inner(tanggal_exp, status)')
-    .eq('membership.status', 'aktif')
-    .gte('membership.tanggal_exp', jadwal.tanggal)
+    .select('id, nama, no_hp, membership!inner(tanggal_mulai, tanggal_exp)')
+    .eq('aktif', true)
+    .lte('membership.tanggal_mulai', kelas.tanggal)
+    .gte('membership.tanggal_exp', kelas.tanggal)
     .order('nama')
 
-  const sudahTerdaftar = new Set((peserta ?? []).map((p) => p.member?.nama))
-  const bisaDidaftarkan = (layak ?? []).filter((m) => !sudahTerdaftar.has(m.nama))
+  const daftarPeserta = peserta ?? []
+  const sudahTerdaftar = new Set(daftarPeserta.map((p) => p.member_id))
+  const bisaDidaftarkan = (layak ?? []).filter((m) => !sudahTerdaftar.has(m.id))
 
-  const kapasitas = jadwal.kelas?.kapasitas ?? 0
-  const penuh = (peserta?.length ?? 0) >= kapasitas
-  const input = 'w-full border border-stone-300 rounded-md px-3 py-2 text-sm'
+  const jam = kelas.jam_mulai.slice(0, 5)
+  const status = statusKelas(kelas, waktuSekarangJakarta())
+  const penuh = daftarPeserta.length >= kelas.kapasitas
 
   return (
-    <main className="p-10 font-sans max-w-3xl">
-      <Link href="/jadwal" className="text-sm text-stone-500">← Kembali ke jadwal</Link>
+    <main className="max-w-3xl p-5 sm:p-8">
+      <Link href="/jadwal" className="text-sm text-zinc-500">{d.kembali}</Link>
 
-      <h1 className="text-2xl font-semibold mt-3">{jadwal.kelas?.nama_kelas ?? 'Kelas'}</h1>
-      <p className="text-stone-500 mb-8">
-        {jadwal.tanggal} · {jadwal.jam_mulai.slice(0, 5)}–{jadwal.jam_selesai.slice(0, 5)} ·
-        Trainer: {jadwal.personal_trainer?.karyawan?.nama ?? '—'} ·
-        Peserta {peserta?.length ?? 0} / {kapasitas}
-      </p>
+      <div className="mb-6 mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-black tracking-tight">{kelas.nama_kelas}</h1>
+          <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${WARNA_STATUS_KELAS[status]}`}>
+            {t.status[status]}
+          </span>
+        </div>
+        <Link href={`/jadwal/${kelas.id}/edit`} className={gayaTombolLain}>{t.daftar.aksi.edit}</Link>
+      </div>
 
-      <h2 className="text-lg font-semibold mb-3">Daftar peserta</h2>
-      <table className="w-full border-collapse text-sm mb-10">
-        <thead>
-          <tr className="text-left text-gray-500 border-b">
-            <th className="py-2 pr-4">Nama</th>
-            <th className="py-2 pr-4">No. HP</th>
-            <th className="py-2 pr-4">Status</th>
-            <th className="py-2 pr-4"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {(peserta ?? []).map((p) => (
-            <tr key={p.id} className="border-b">
-              <td className="py-2 pr-4 font-medium">{p.member?.nama}</td>
-              <td className="py-2 pr-4">{p.member?.no_hp ?? '—'}</td>
-              <td className="py-2 pr-4">{p.status_hadir}</td>
-              <td className="py-2 pr-4">
-                <div className="flex gap-2">
-                  {p.status_hadir !== 'hadir' && (
-                    <form action={tandaiHadir}>
-                      <input type="hidden" name="id" value={p.id} />
-                      <input type="hidden" name="schedule_id" value={jadwal.id} />
-                      <button className="border border-stone-300 rounded-md px-2.5 py-1 text-xs">Hadir</button>
-                    </form>
-                  )}
-                  <form action={batalkan}>
-                    <input type="hidden" name="id" value={p.id} />
-                    <input type="hidden" name="schedule_id" value={jadwal.id} />
-                    <button className="border border-stone-300 rounded-md px-2.5 py-1 text-xs">Batalkan</button>
-                  </form>
-                </div>
-              </td>
+      <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-5">
+        <dl className="grid gap-5 sm:grid-cols-3">
+          <Baris label={d.label.instruktur}>{kelas.instruktur?.nama ?? '—'}</Baris>
+          <Baris label={d.label.tipe}>{t.tipe[kelas.tipe_kelas] ?? kelas.tipe_kelas}</Baris>
+          <Baris label={d.label.tanggal}>{formatTanggal(kelas.tanggal, bahasa)}</Baris>
+          <Baris label={d.label.jam}>{jam} – {jamSelesai(jam, kelas.durasi_menit)}</Baris>
+          <Baris label={d.label.durasi}>{formatMenit(kelas.durasi_menit, bahasa)}</Baris>
+          <Baris label={d.label.kapasitas}>{daftarPeserta.length} / {kelas.kapasitas}</Baris>
+        </dl>
+      </div>
+
+      <h2 className="mb-3 text-lg font-bold">{d.peserta.judul}</h2>
+      <div className="mb-10 overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b text-left text-zinc-500">
+              <th className="py-2 pr-4">{d.peserta.kolom.nama}</th>
+              <th className="py-2 pr-4">{d.peserta.kolom.hp}</th>
+              <th className="py-2 pr-4">{d.peserta.kolom.status}</th>
+              <th className="py-2 pr-4">{d.peserta.kolom.aksi}</th>
             </tr>
-          ))}
-          {(peserta ?? []).length === 0 && (
-            <tr><td colSpan={4} className="py-4 text-stone-400">Belum ada peserta.</td></tr>
-          )}
-        </tbody>
-      </table>
-
-      <h2 className="text-lg font-semibold mb-3">Daftarkan peserta</h2>
-      {penuh ? (
-        <p className="text-sm text-stone-500">Kelas sudah penuh.</p>
-      ) : bisaDidaftarkan.length === 0 ? (
-        <p className="text-sm text-stone-500">
-          Tidak ada member lain dengan membership aktif pada tanggal kelas ini.
-        </p>
-      ) : (
-        <form action={daftarkan} className="flex gap-3 max-w-md">
-          <input type="hidden" name="schedule_id" value={jadwal.id} />
-          <select name="member_id" className={input}>
-            {bisaDidaftarkan.map((m) => (
-              <option key={m.id} value={m.id}>{m.nama}</option>
+          </thead>
+          <tbody>
+            {daftarPeserta.map((p) => (
+              <tr key={p.id} className="border-b">
+                <td className="py-2 pr-4 font-medium">
+                  <Link href={`/member/${p.member_id}`} className="hover:underline">{p.member?.nama}</Link>
+                </td>
+                <td className="py-2 pr-4">{p.member?.no_hp ?? '—'}</td>
+                <td className="py-2 pr-4">{d.statusHadir[p.status_hadir] ?? p.status_hadir}</td>
+                <td className="py-2 pr-4">
+                  <div className="flex gap-2">
+                    {p.status_hadir !== 'hadir' && (
+                      <form action={tandaiHadir}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="schedule_id" value={kelas.id} />
+                        <button className={gayaTombolKecil}>{d.peserta.hadir}</button>
+                      </form>
+                    )}
+                    <form action={batalkanPeserta}>
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="schedule_id" value={kelas.id} />
+                      <button className={gayaTombolKecil}>{d.peserta.batalkan}</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
             ))}
-          </select>
-          <button type="submit" className="bg-teal-700 text-white rounded-md px-4 py-2 text-sm font-medium shrink-0">
-            Daftarkan
-          </button>
-        </form>
+            {daftarPeserta.length === 0 && (
+              <tr><td colSpan={4} className="py-4 text-zinc-400">{d.peserta.belum}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mb-3 text-lg font-bold">{d.daftar.judul}</h2>
+      {kelas.dibatalkan ? (
+        <p className="text-sm text-zinc-500">{d.daftar.dibatalkan}</p>
+      ) : penuh ? (
+        <p className="text-sm text-zinc-500">{d.daftar.penuh}</p>
+      ) : bisaDidaftarkan.length === 0 ? (
+        <p className="text-sm text-zinc-500">{d.daftar.kosong}</p>
+      ) : (
+        <FormDaftarPeserta scheduleId={kelas.id} member={bisaDidaftarkan} teks={d.daftar} />
       )}
     </main>
   )

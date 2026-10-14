@@ -52,8 +52,9 @@ export default async function RingkasanPage() {
       .order('jumlah_stok'),
     supabase
       .from('schedule')
-      .select('id, jam_mulai, kelas(nama_kelas, kapasitas), personal_trainer(karyawan(nama)), kelas_peserta(count)')
+      .select('id, jam_mulai, nama_kelas, kapasitas, instruktur:karyawan!instruktur_id(nama), kelas_peserta(count)')
       .eq('tanggal', today)
+      .eq('dibatalkan', false)
       .order('jam_mulai'),
     supabase
       .from('pengumuman')
@@ -93,7 +94,7 @@ export default async function RingkasanPage() {
     { href: '/member/baru', ...t.aksi.memberBaru, utama: true },
     { href: '/member', ...t.aksi.perpanjang },
     { href: '/jadwal/baru', ...t.aksi.buatKelas },
-    { href: '/karyawan/baru', ...t.aksi.stafBaru },
+    { href: '/staff/baru', ...t.aksi.stafBaru },
   ]
 
   const kartu = [
@@ -210,10 +211,10 @@ export default async function RingkasanPage() {
                 <div className="w-12 text-xs font-bold text-zinc-500">{j.jam_mulai.slice(0, 5)}</div>
                 <div className="h-12 w-1 rounded-full bg-lime-400" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold">{j.kelas?.nama_kelas ?? t.jadwal.kelas}</div>
+                  <div className="text-sm font-bold">{j.nama_kelas}</div>
                   <div className="truncate text-xs text-zinc-500">
-                    {j.personal_trainer?.karyawan?.nama ?? '—'} · {j.kelas_peserta?.[0]?.count ?? 0} /{' '}
-                    {j.kelas?.kapasitas ?? '—'}
+                    {j.instruktur?.nama ?? '—'} · {j.kelas_peserta?.[0]?.count ?? 0} /{' '}
+                    {j.kapasitas}
                   </div>
                 </div>
               </Link>

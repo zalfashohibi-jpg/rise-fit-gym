@@ -17,7 +17,7 @@ export function selisihHari(a, b) {
 // "2026-02-30" tidak lolos, hanya tanggal yang benar-benar ada
 export function tanggalValid(teks) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(teks)) return false
-  const d = new Date(`${teks}T00:00:00Z`)
+  const d = new Date(`${teks}T00:00:00+07:00`)
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === teks
 }
 
@@ -34,7 +34,7 @@ export function formatTanggal(teks, bahasa) {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-    timeZone: 'UTC',
+    timeZone: 'Asia/Jakarta',
   }).format(new Date(teks))
 }
 
